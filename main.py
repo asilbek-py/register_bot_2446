@@ -4,7 +4,7 @@ import os
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import CommandStart, Command
 from aiogram.types import Message
-from config import API_TOKEN
+from config import API_TOKEN, CHANNEL_ID
 from states import RegistrationState
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
@@ -53,11 +53,53 @@ async def yosh_handler(message: Message, state: FSMContext):
 
 @dp.message(StateFilter(RegistrationState.telefon_raqam))
 async def telefon_raqam_handler(message: Message, state: FSMContext):
-    await message.answer("Telefon raqam qabul qilindi! telefon raqam jo'nating:", reply_markup=ReplyKeyboardRemove())
+    await message.answer("Telefon raqam qabul qilindi! Login yozing:", reply_markup=ReplyKeyboardRemove())
     await state.update_data(telefon_raqam=message.contact.phone_number)
-    data = await state.get_data()
-    await message.answer(text=f'{data}')
+    await state.set_state(RegistrationState.login)
 
+
+@dp.message(StateFilter(RegistrationState.login))
+async def login_handler(message: Message, state: FSMContext):
+    await message.answer("Login qabul qilindi! Parol kiriting:")
+    await state.update_data(login=message.text)
+    await state.set_state(RegistrationState.parol)
+
+
+tasdiqlash_button = ReplyKeyboardMarkup(keyboard=[
+    [KeyboardButton(text="✅  Tasdiqlash")],
+    [KeyboardButton(text="❌  Bekor qilish")]
+], resize_keyboard=True)
+    
+
+@dp.message(StateFilter(RegistrationState.parol))
+async def parol_handler(message: Message, state: FSMContext):
+    await state.update_data(parol=message.text)
+    await state.update_data(chat_id=message.from_user.id)
+    data = await state.get_data()
+    text = (f"Quyidagi ma'lumotlaringiz to'g'rimi?\n\n"
+            f"🆔  Chat ID: {data['chat_id']}\n"
+            f"👤  Ism: {data['ism']}\n"
+            f"👤  Familiya: {data['familiya']}\n"
+            f"🎂  Yosh: {data['yosh']}\n"
+            f"📞  Telefon raqam: {data['telefon_raqam']}\n"
+            f"💻  Login: {data['login']}\n"
+            f"🔒  Parol: {data['parol']}\n")
+    await state.update_data(all_data=text)
+    await message.answer(text, reply_markup=tasdiqlash_button)    
+    await state.set_state(RegistrationState.tasdiqlash)
+
+@dp.message(StateFilter(RegistrationState.tasdiqlash), F.text.in_({"✅  Tasdiqlash", "❌  Bekor qilish"}))
+async def tasdiqlash_handler(message: Message, state: FSMContext):  
+    if message.text == "✅  Tasdiqlash":
+        data = await state.get_data()
+        mytext = data.get("all_data")
+        await bot.send_message(chat_id=CHANNEL_ID, text=mytext)  # type: ignore
+        await message.answer("Ro'yhatdan o'tish muvaffaqiyatli yakunlandi! 🎉", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+    else:
+        await message.answer("Ro'yhatdan o'tish bekor qilindi. Yana boshlash uchun /register buyrug'ini bering.", reply_markup=ReplyKeyboardRemove())
+        await state.clear()
+    
 
 async def main():
     await dp.start_polling(bot)
